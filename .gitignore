@@ -1,0 +1,9 @@
+perf.hist.*
+*.o
+
+compile_flags.txt
+
+0_Vendor/coalesce-cuda
+0_Vendor/coalesce-hip
+0_Vendor/transpose-cuda
+0_Vendor/transpose-hip
