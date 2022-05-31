@@ -136,7 +136,7 @@ int main(int argc, char **argv) {
   int threads;
 
   if (argc < 4) {
-    N = 1024;
+    N = 1<<20;
     blocks = 256;
     threads = 256;
   } else {
@@ -147,6 +147,7 @@ int main(int argc, char **argv) {
   }
 
   printf("Testing copy for %d elements\n", N);
+  printf("Blocks %d Threads %d\n", blocks, threads);
 
   printf("Method \t\t\tBandwidth (GB/s) Time Taken\n");
 

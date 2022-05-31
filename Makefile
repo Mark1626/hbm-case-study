@@ -6,10 +6,12 @@ FLAGS=-O3
 # all: all-cuda all-hip
 
 all-cuda: 0_Vendor/coalesce-cuda \
-					0_Vendor/transpose-cuda
+					0_Vendor/transpose-cuda \
+					1_Data_Trn/copy-cuda
 
 all-hip: 0_Vendor/coalesce-hip \
-					0_Vendor/transpose-hip
+					0_Vendor/transpose-hip \
+					1_Data_Trn/copy-hip
 
 
 %.cpp: %.cu
