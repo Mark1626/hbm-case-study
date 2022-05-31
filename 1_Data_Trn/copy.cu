@@ -1,27 +1,29 @@
 #include <assert.h>
-#include <cooperative_groups.h>
+#include <cstdlib>
 #include <stdio.h>
-#include <stdlib.h>
+#include <string>
+#include <cooperative_groups.h>
 
 namespace cg = cooperative_groups;
 
 #define SHARED_SIZE_LIMIT 1024U
 #define WARP 512U
 #define WINDOW_SIZE SHARED_SIZE_LIMIT
-const int NUM_REPS = 1000;
 
-inline cudaError_t checkCudaErrors(cudaError_t result) {
+#define NUM_REPS 1000
+
+inline cudaError_t checkCudaErrors(std::string msg, cudaError_t result) {
   if (result != cudaSuccess) {
-    fprintf(stderr, "Cuda Runtime Error : %s\n", cudaGetErrorString(result));
+    fprintf(stderr, "Cuda Runtime Error %s : %s\n", msg.c_str(),
+            cudaGetErrorString(result));
     assert(result == cudaSuccess);
   }
   return result;
 }
 
 __global__ void copy(float *out, float *in, uint size) {
-  uint tid = blockIdx.x * blockDim.x + threadIdx.x;
+  uint tid = blockDim.x * blockIdx.x + threadIdx.x;
   uint stride = blockDim.x * gridDim.x;
-
   for (; tid < size; tid += stride) {
     out[tid] = in[tid];
   }
@@ -31,7 +33,7 @@ __global__ void copy_unroll(float *out, float *in, uint size) {
   uint tid = blockIdx.x * blockDim.x + threadIdx.x;
   uint stride = blockDim.x * gridDim.x;
 
-  #pragma unroll 4
+#pragma unroll 4
   for (; tid < size; tid += stride) {
     out[tid] = in[tid];
   }
@@ -41,8 +43,8 @@ __global__ void copy2(float *out, float *in, uint size) {
   uint tid = blockIdx.x * blockDim.x + threadIdx.x;
   uint stride = blockDim.x * gridDim.x;
 
-  for (; tid < size/2; tid += stride) {
-    reinterpret_cast<float2*>(out)[tid] = reinterpret_cast<float2*>(in)[tid];
+  for (; tid < size / 2; tid += stride) {
+    reinterpret_cast<float2 *>(out)[tid] = reinterpret_cast<float2 *>(in)[tid];
   }
 }
 
@@ -50,8 +52,8 @@ __global__ void copy4(float *out, float *in, uint size) {
   uint tid = blockIdx.x * blockDim.x + threadIdx.x;
   uint stride = blockDim.x * gridDim.x;
 
-  for (; tid < size/4; tid += stride) {
-    reinterpret_cast<float4*>(out)[tid] = reinterpret_cast<float4*>(in)[tid];
+  for (; tid < size / 4; tid += stride) {
+    reinterpret_cast<float4 *>(out)[tid] = reinterpret_cast<float4 *>(in)[tid];
   }
 }
 
@@ -59,98 +61,76 @@ __global__ void copy4_unroll(float *out, float *in, uint size) {
   uint tid = blockIdx.x * blockDim.x + threadIdx.x;
   uint stride = blockDim.x * gridDim.x;
 
-  #pragma unroll 4
-  for (; tid < size/4; tid += stride) {
-    reinterpret_cast<float4*>(out)[tid] = reinterpret_cast<float4*>(in)[tid];
+#pragma unroll 4
+  for (; tid < size / 4; tid += stride) {
+    reinterpret_cast<float4 *>(out)[tid] = reinterpret_cast<float4 *>(in)[tid];
   }
 }
 
-void driver(uint size, int blocks, int threads,
-            void (*kernel)(float *, float *, uint)) {
-
+void driver(int size, int blocks, int threads, void (*kernel)(float*, float*, uint)) {
   float *in;
   float *out;
-  cudaMallocManaged(&in, sizeof(float) * size);
-  cudaMallocManaged(&out, sizeof(float) * size);
 
-  for (uint i = 0; i < size; i++) {
-    in[i] = (size - i) * 1.0;
-  }
+  in = (float *)malloc(size * sizeof(float));
+  out = (float *)malloc(size * sizeof(float));
+
+  float *in_d;
+  float *out_d;
 
   cudaEvent_t start, stop;
 
-  checkCudaErrors(cudaEventCreate(&start));
-  checkCudaErrors(cudaEventCreate(&stop));
+  checkCudaErrors("Start Event Create", cudaEventCreate(&start));
+  checkCudaErrors("Stop Event Create", cudaEventCreate(&stop));
 
-  // Warmup
-  kernel<<<blocks, threads>>>(out, in, size);
+  checkCudaErrors("Malloc", cudaMalloc(&in_d, size * sizeof(float)));
+  checkCudaErrors("Malloc", cudaMalloc(&out_d, size * sizeof(float)));
 
-  checkCudaErrors(cudaEventRecord(start, 0));
+  for (int i = 0; i < size; i++) {
+    in[i] = size - i;
+  }
+
+  checkCudaErrors("HtoD", cudaMemcpy(in_d, in, size * sizeof(float),
+                                     cudaMemcpyHostToDevice));
+
+  kernel<<<blocks, threads>>>(out_d, in_d, size);
+
+  checkCudaErrors("Start", cudaEventRecord(start, 0));
 
   for (int i = 0; i < NUM_REPS; i++)
-    kernel<<<blocks, threads>>>(out, in, size);
+    kernel<<<blocks, threads>>>(out_d, in_d, size);
 
-  cudaDeviceSynchronize();
-
-#ifdef DEBUG
-  for (int i = 0; i < size; i++) {
-    printf("%f ", in[i]);
-  }
-  printf("\n");
-#endif
-
-  checkCudaErrors(cudaEventRecord(stop, 0));
-  checkCudaErrors(cudaEventSynchronize(stop));
+  checkCudaErrors("Stop", cudaEventRecord(stop, 0));
+  checkCudaErrors("Sync", cudaEventSynchronize(stop));
 
   float elapsedTime;
-  checkCudaErrors(cudaEventElapsedTime(&elapsedTime, start, stop));
-  printf("%.3f\t %.3fms\n", 2 * size * sizeof(float) * NUM_REPS * 1e-6 / elapsedTime, elapsedTime);
-  // printf("Elapsed GPU time %f ms\n", elapsedTime);
+  checkCudaErrors("Time taken",
+                  cudaEventElapsedTime(&elapsedTime, start, stop));
+  printf("%.3fms\t %.3f\n", elapsedTime,
+         2 * size * sizeof(float) * NUM_REPS * 1e-6 / elapsedTime);
 
-#ifdef ASSERT
-  for (int i = 0; i < size; i++) {
-    if (out[i] != in[i]) {
-      printf("Assertion failed at pos: %d\n", i);
-      assert(out[i] == in[i]);
-    }
-  }
-#endif
+  checkCudaErrors("Event destroy start", cudaEventDestroy(start));
+  checkCudaErrors("Event destroy stop", cudaEventDestroy(stop));
 
-#ifdef DEBUG
-  for (int i = 0; i < size; i++) {
-    printf("%f ", out[i]);
-  }
-  printf("\n");
-#endif
+  checkCudaErrors("DtoH", cudaMemcpy(out, out_d, size * sizeof(float),
+                                     cudaMemcpyDeviceToHost));
 
-  checkCudaErrors(cudaEventDestroy(start));
-  checkCudaErrors(cudaEventDestroy(stop));
-
-  cudaFree(out);
-  cudaFree(in);
+  free(in);
+  free(out);
+  checkCudaErrors("cuda free", cudaFree(in_d));
+  checkCudaErrors("cuda free", cudaFree(out_d));
 }
 
 int main(int argc, char **argv) {
-  int N;
-  int blocks;
-  int threads;
+  int N = 1 << 20;
+  int blocks = 256;
+  int threads = 256;
 
-  if (argc < 4) {
-    N = 1<<20;
-    blocks = 256;
-    threads = 256;
-  } else {
-    uint pow = atoi(argv[1]);
+  if (argc > 1) {
+    int pow = atoi(argv[1]);
     N = 1 << pow;
-    blocks = atoi(argv[2]);
-    threads = atoi(argv[3]);
   }
 
-  printf("Testing copy for %d elements\n", N);
-  printf("Blocks %d Threads %d\n", blocks, threads);
-
-  printf("Method \t\t\tBandwidth (GB/s) Time Taken\n");
-
+  printf("Method\t\t\t Time Taken Bandwidth (GB/s)\n");
   printf("Scalar copy\t\t\t");
   driver(N, blocks, threads, copy);
 
