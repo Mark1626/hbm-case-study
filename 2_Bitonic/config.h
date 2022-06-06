@@ -1,0 +1,11 @@
+#ifndef COMMON_H
+#define COMMON_H
+
+#define WINDOW_SIZE 32U
+#define BLOCK_ROWS (WINDOW_SIZE / 4)
+#define TOTAL_WINDOW_SIZE (WINDOW_SIZE * WINDOW_SIZE)
+#define WARP (TOTAL_WINDOW_SIZE / 2)
+
+#define BATCH_DIM 128U
+
+#endif
