@@ -7,11 +7,13 @@ FLAGS=-O3
 
 all-cuda: 0_Vendor/coalesce-cuda \
 					0_Vendor/transpose-cuda \
-					1_Data_Trn/copy-cuda
+					1_Data_Trn/copy-cuda \
+					3_Algo/bitonic-cuda
 
 all-hip: 0_Vendor/coalesce-hip \
 					0_Vendor/transpose-hip \
-					1_Data_Trn/copy-hip
+					1_Data_Trn/copy-hip \
+					3_Algo/bitonic-hip
 
 
 %.cpp: %.cu
@@ -26,7 +28,12 @@ all-hip: 0_Vendor/coalesce-hip \
 clean:
 	@rm -f 0_Vendor/coalesce-cuda \
 					0_Vendor/transpose-cuda \
+					1_Data_Trn/copy-cuda \
+					3_Algo/bitonic-cuda \
 					0_Vendor/coalesce-hip \
-					0_Vendor/transpose-hip
+					0_Vendor/transpose-hip \
+					1_Data_Trn/copy-hip \
+					3_Algo/bitonic-hip
+
 
 .PHONY: all-cuda all-hip
